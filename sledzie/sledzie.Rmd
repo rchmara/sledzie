@@ -2,32 +2,209 @@
 title: "Analiza danych - ZED"
 author: "Rafal Chmara"
 date: "18 grudnia 2016"
-#output: html_document
-output:
-  md_document:
-    variant: markdown_github
+output: 
+  html_document:
+    toc: true
+    depth: 2
+    number_sections: true
+    theme: united
+    highlight: tango
+#output:
+#  md_document:
+#    variant: markdown_github
 ---
 
+# Podsumowanie analizy/ wprowadzenie
+
+TODO
+Raport powinien zaczynać się od rozdziału podsumowującego całą analizę, streszczającego najważniejsze spostrzeżenia analityka. Należy tu podkreślić, że właśnie zrozumienie danych, czytelna prezentacja wyników oraz stosowanie się do podstawowych zasad wizualizacji danych będą, obok technicznej strony raportu, podstawą oceny z projektu.
+
+
+
+# Ładowanie oraz struktura danych
+
 ```{r setup, include=FALSE}
+#load libraries
+library(knitr)       # report generation
+library(dplyr)       # data manipulation
+library(ggplot2)     # plots visualisation
+library(gridExtra)   # multiple plots on grid
+library(corrplot)    # correlation matrix visualisation
+library(plotly)      #
+library(caret)       #
+#load script
+knitr::read_chunk('fillMissingWithMedian.R')
+#default opts
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+```{r loadData}
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+rawCSV <- read.csv("sledzie.csv", na.strings = "?")
+cleanData <- na.omit(rawCSV)
+str(rawCSV)
 ```
 
-## Including Plots
+Zbiór danych zawiera 52582 obserwacje opisane 16 atrybutami:
 
-You can also embed plots, for example:
+Nazwa atrybutu| Opis
+---------|--------------------------------------------
+length        | długość złowionego śledzia [cm]
+cfin1         | dostępność planktonu [zagęszczenie Calanus finmarchicus gat. 1]
+cfin2         | dostępność planktonu [zagęszczenie Calanus finmarchicus gat. 2]
+chel1         | dostępność planktonu [zagęszczenie Calanus helgolandicus gat. 1]
+chel2         | dostępność planktonu [zagęszczenie Calanus helgolandicus gat. 2]
+lcop1         | dostępność planktonu [zagęszczenie widłonogów  gat. 1]
+lcop2         | dostępność planktonu [zagęszczenie widłonogów  gat. 2]
+fbar          | natężenie połowów w regionie [ułamek pozostawionego narybku]
+recr          | roczny narybek [liczba śledzi]
+cumf          | łączne roczne natężenie połowów w regionie [ułamek pozostawionego narybku]
+totaln        | łączna liczba ryb złowionych w ramach połowu [liczba śledzi]
+sst           | temperatura przy powierzchni wody [°C]
+sal           | poziom zasolenia wody [Knudsen ppt]
+xmonth        | miesiąc połowu [numer miesiąca]
+nao           | oscylacja północnoatlantycka [mb]
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+# Analiza rozkładu atrybutów
+
+Krótkie podsumowanie statystyk wartości atrybutów:
+
+```{r summary}
+summary(rawCSV[-1])
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+# Wartości puste
+
+```{r calculateMissingRows, echo=FALSE}
+allRows <- nrow(rawCSV)
+completeRows <- sum(complete.cases(rawCSV))
+rowsWithNA <- allRows - completeRows
+```
+
+Zbiór danych opisujący połów śledzi zawiera `r rowsWithNA` niepełnych obserwacji. Cały zbiór składa się jedynie `r allRows` pomiarów, odrzucając tak dużą część danych zostałyby utracone istotne informacje.
+
+Na podstawie podsumowania statystyk kolejnych atrybutów można zauważyć, że brakujące wartości występują jedynie w cechach opisujących:
+
+* dostępność planktonu (cfin1, cfin2, chel1, chel2, lcop1, lcop2),
+* temperaturę przy powierzchni wody (sst).
+
+W zbiorze danych można zauważyć, że wartości atrybutów najczęściej występują w podobnych grupach. Dla przedstawienia tej zależności wybrano przykładowe trzy podzbiory sąsiadujących ze sobą elementów:
+
+```{r similarGroups}
+rawCSV[c(1:5, 1001:1005, 20001:20005), ]
+```
+
+Widać wyraźnie, że sąsiadujące ze sobą elementy mają prawie zawsze identyczne wartości na atrybutach `r names(rawCSV)[-c(1,2)]`, a różnice są niewielkie. W pierwszej obserwacji (X=1) cechę 'chel2', na pierwszy rzut oka, możnaby uzupełnić o wartość 21.43548. Podobnie w 1004 wierszu lcop na 9.01000 itd.
+
+Do uzupełnienia wartości pustych wybrane zostaną wiersze posiadające grupy podobne do uzupełnianego wiersza. Następnie z podobnych grup wyznaczona zostanie mediana dla danej wartości.
+
+```{r fillMissing, echo=FALSE}
+#including functions
+```
+
+```{r fillPlankton, cache=TRUE, echo=FALSE}
+withoutMissing <- rawCSV
+planktonAttrNames <- names(withoutMissing)[3:8]
+
+#cfin1
+withoutMissing[is.na(withoutMissing$cfin1), ] <- 
+  fillMissingWithMedian(rawCSV, withoutMissing[is.na(withoutMissing$cfin1), ], 
+                        "cfin1", planktonAttrNames[planktonAttrNames != "cfin1"])
+#cfin2
+withoutMissing[is.na(withoutMissing$cfin2), ] <- 
+  fillMissingWithMedian(rawCSV, withoutMissing[is.na(withoutMissing$cfin2), ], 
+                        "cfin2", planktonAttrNames[planktonAttrNames != "cfin2"])
+#chel1
+withoutMissing[is.na(withoutMissing$chel1), ] <- 
+  fillMissingWithMedian(rawCSV, withoutMissing[is.na(withoutMissing$chel1), ], 
+                        "chel1", planktonAttrNames[planktonAttrNames != "chel1"])
+#chel2
+withoutMissing[is.na(withoutMissing$chel2), ] <- 
+  fillMissingWithMedian(rawCSV, withoutMissing[is.na(withoutMissing$chel2), ], 
+                        "chel2", planktonAttrNames[planktonAttrNames != "chel2"])
+#lcop1
+withoutMissing[is.na(withoutMissing$lcop1), ] <- 
+  fillMissingWithMedian(rawCSV, withoutMissing[is.na(withoutMissing$lcop1), ], 
+                        "lcop1", planktonAttrNames[planktonAttrNames != "lcop1"])
+#lcop2
+withoutMissing[is.na(withoutMissing$lcop2), ] <- 
+  fillMissingWithMedian(rawCSV, withoutMissing[is.na(withoutMissing$lcop2), ], 
+                        "lcop2", planktonAttrNames[planktonAttrNames != "lcop2"])
+#sst
+withoutMissing[is.na(withoutMissing$sst), ] <- 
+  fillMissingSST(rawCSV, withoutMissing[is.na(withoutMissing$sst), ])
+```
+
+```{r funcSample, eval=FALSE}
+#Uproszczony algorytm wyznaczania grup podobnych i mediany do uzupełnienia wartości pustych (przykład dla atrybutu sst)
+df <- rawCSV[is.na(rawCSV$sst), ]
+for(i in 1:nrow(df)){
+  row <- df[i,]
+  #wyznaczanie grup podobnych na podstawie atrybutów totaln, sal, xmonth oraz nao
+  similarGroups <- rawCSV[
+      rawCSV$totaln == row$totaln &
+      rawCSV$sal == row$sal &
+      rawCSV$xmonth == row$xmonth &
+      rawCSV$nao == row$nao, ]
+  #przypisanie mediany
+  df[i,]$sst <- median(similarGroups$sst, na.rm = TRUE)
+}
+```
+
+Statystyki zbioru po wypełnieniu wartości pustych:
+
+```{r statsWithoutNA}
+summary(withoutMissing[-1])
+```
+
+# Analiza wartości atrybutów
+
+```{r boxplots}
+boxplot(withoutMissing$length, horizontal=TRUE, main="Długość śledzia")
+boxplot(withoutMissing[,3:8], main="Dostępność planktonu")
+boxplot(withoutMissing$fbar, horizontal=TRUE, main="Natężenie połowów w regionie")
+boxplot(withoutMissing$recr, horizontal=TRUE, main="Roczny narybek")
+boxplot(withoutMissing$cumf, horizontal=TRUE, main="Łączne roczne natężenie połowów w regionie")
+boxplot(withoutMissing$totaln, horizontal=TRUE, main="Łączna liczba ryb złowionych w ramach połowu")
+boxplot(withoutMissing$sst, horizontal=TRUE, main="Temperatura przy powierzchni wody")
+boxplot(withoutMissing$sal, horizontal=TRUE, main="Poziom zasolenia wody")
+boxplot(withoutMissing$nao, horizontal=TRUE, main="Oscylacja północnoatlantycka")
+```
+
+# Analiza korelacji
+
+Analizę związków pomiędzy atrybutami dokonano za pomocą wizualizacji macierzy korelacji. Macierz korelacji jest ...
+
+```{r corAnalysis}
+corMatrix <- cor(withoutMissing)
+corrplot(corMatrix, method = "square")
+```
+
+Na wykresie można zauważyć silną korelację ujemną między długością śledzia (length), a temperaturą przy powierzchni (sst). Wielkość ryb zależy również od oscylacji północnoatlantyckiej (nao). 
+
+Oscylacja Północnoatlantycka to zjawisko meteorologiczne, które ma wpływ na klimat i jest związane ze zmianami cyrkulacji powietrza i wód, ze zmianami ciśnienia oraz temperatury. Można to zauważyć na macierzy - temperatura przy powierzchni jest silnie dodatnio skorelowana z NAO. Ujemna korelacja oznacza, że wyższa temperatura oraz dodatnia faza NAO wpływa na zmiejszenie się długości łowionych śledzi.
+
+Rozmiar śledzia jest także związany z intensywnościa połowów oraz dostępnością planktonu (chel1 - Calanus helgolandicus gat. 1 i lcop1 - widłonogów  gat. 1).
+
+```{r feature2, message = FALSE}
+ggplot(withoutMissing, aes(x=sst, y=length)) + geom_point() + geom_smooth() + theme_bw()
+```
+
+# Prezentacja zmiany rozmiaru śledzi w czasie
+
+Dane w zbiorze są uporządkowane chronolicznie, dlatego jako atrybut X zostanie przedstawiony jako zmiana czasu. Do prezentacji wybrano próbkę 5% ze zbioru, aby wykres interaktywny działał w sposób płynny.
+
+```{r plotlyLength, message = FALSE}
+partition <- createDataPartition(y=withoutMissing$length, p=.05, list=FALSE)
+dfPartition <- withoutMissing[partition, ]
+p <- ggplot(dfPartition, aes(x=X, y=length, color=sst)) + geom_point() + geom_smooth() + theme_bw()
+ggplotly(p)
+```
+
+# Regresor przewidujący rozmiar śledzia
+
+Sekcję próbującą stworzyć regresor przewidujący rozmiar śledzia (w tej sekcji należy wykorzystać wiedzę z pozostałych punktów oraz wykonać dodatkowe czynności, które mogą poprawić trafność predykcji); dobór parametrów modelu oraz oszacowanie jego skuteczności powinny zostać wykonane za pomocą techniki podziału zbioru na dane uczące, walidujące i testowe; trafność regresji powinna zostać oszacowana na podstawie miar R2R2 i RMSERMSE.
+
+# Analiza ważności atrybutów
+
+Analizę ważności atrybutów najlepszego znalezionego modelu regresji. Analiza ważności atrybutów powinna stanowić próbę odpowiedzi na pytanie: co sprawia, że rozmiar śledzi zaczął w pewnym momencie maleć.
