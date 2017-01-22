@@ -2,17 +2,18 @@
 title: "Analiza danych - ZED"
 author: "Rafal Chmara"
 date: "18 grudnia 2016"
-output: 
-  html_document:
-    toc: true
-    depth: 2
-    number_sections: true
-    theme: united
-    highlight: tango
+always_allow_html: yes
+output:
   md_document:
-    variant: markdown_github
-    toc: true
+    toc: yes
     toc_depth: 2
+    variant: markdown_github
+  html_document:
+    depth: 2
+    highlight: tango
+    number_sections: yes
+    theme: united
+    toc: yes
 ---
 
 ```{r setup, include=FALSE}
