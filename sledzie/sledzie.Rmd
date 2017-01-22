@@ -9,39 +9,51 @@ output:
     number_sections: true
     theme: united
     highlight: tango
-#output:
-#  md_document:
-#    variant: markdown_github
+  md_document:
+    variant: markdown_github
+    toc: true
+    toc_depth: 2
 ---
 
-# Podsumowanie analizy/ wprowadzenie
-
-TODO
-Raport powinien zaczynać się od rozdziału podsumowującego całą analizę, streszczającego najważniejsze spostrzeżenia analityka. Należy tu podkreślić, że właśnie zrozumienie danych, czytelna prezentacja wyników oraz stosowanie się do podstawowych zasad wizualizacji danych będą, obok technicznej strony raportu, podstawą oceny z projektu.
-
-
-
-# Ładowanie oraz struktura danych
-
 ```{r setup, include=FALSE}
-#load libraries
-library(knitr)       # report generation
-library(dplyr)       # data manipulation
-library(ggplot2)     # plots visualisation
-library(gridExtra)   # multiple plots on grid
-library(corrplot)    # correlation matrix visualisation
-library(plotly)      #
-library(caret)       #
 #load script
 knitr::read_chunk('fillMissingWithMedian.R')
 #default opts
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+# Wprowadzenie 
+
+Celem projektu jest analiza zbioru danych dotyczących połowu śledzia oceanicznego w Europie oraz próba określenia głównych przyczyn stopniowego zmniejszania się długości śledzi. Pomiary zawierają obserwacje z ostatnich 60 lat. Wiersze są uporządkowane chronologicznie.
+
+Zbiór danych zawiera 52582 obserwacji opisanych 16 cechami. 
+
+# Podsumowanie analizy
+
+Podczas analizy, ze zbioru, usunięte zostały wartości brakujące. Przeprowadzona została interpretacja wartości cech i korelacji między nimi. W trakcie badań zależności określono, że długość śledzia jest powiązana w dużym stopniu ze zmianą temperatury przy powierzchni wody i zjawiskiem oscylacji północnoatlantyckiej. W kolejnym kroku utworzony został model predykcji długości ryby w postaci regresora za pomocą algorytmu RandomForest. W projekcie zbadano ważność atrybutów podczas predykcji, co pomogło określić przyczyny spadku długości śledzia wyławianego w Europie:
+
+* wzrost temperatury wskutek dodatniej fazy oscylacji północnoatlantyckiej
+* spadek dostępności pożywienia
+* spadek liczby małych ryb (narybku)
+
+
+# Ładowanie oraz struktura danych
+
+```{r libraries, message = FALSE}
+#load libraries
+library(knitr)       # report generation
+library(dplyr)       # data manipulation
+library(ggplot2)     # plots visualisation
+library(gridExtra)   # multiple plots on grid
+library(corrplot)    # correlation matrix visualisation
+library(plotly)      # interactive plots
+library(caret)       # data exploration lib
+library(randomForest)# rf
+```
+
 ```{r loadData}
 
 rawCSV <- read.csv("sledzie.csv", na.strings = "?")
-cleanData <- na.omit(rawCSV)
 str(rawCSV)
 ```
 
@@ -81,14 +93,14 @@ completeRows <- sum(complete.cases(rawCSV))
 rowsWithNA <- allRows - completeRows
 ```
 
-Zbiór danych opisujący połów śledzi zawiera `r rowsWithNA` niepełnych obserwacji. Cały zbiór składa się jedynie `r allRows` pomiarów, odrzucając tak dużą część danych zostałyby utracone istotne informacje.
+Zbiór danych opisujący połów śledzi zawiera `r rowsWithNA` niepełnych obserwacji. Cały zbiór składa się z jedynie `r allRows` pomiarów, odrzucając tak dużą część danych zostałyby utracone istotne informacje.
 
 Na podstawie podsumowania statystyk kolejnych atrybutów można zauważyć, że brakujące wartości występują jedynie w cechach opisujących:
 
 * dostępność planktonu (cfin1, cfin2, chel1, chel2, lcop1, lcop2),
 * temperaturę przy powierzchni wody (sst).
 
-W zbiorze danych można zauważyć, że wartości atrybutów najczęściej występują w podobnych grupach. Dla przedstawienia tej zależności wybrano przykładowe trzy podzbiory sąsiadujących ze sobą elementów:
+W zbiorze danych warto zwrócić uwagę, że wartości atrybutów najczęściej występują w podobnych grupach. Dla przedstawienia tej zależności wybrano przykładowe trzy podzbiory sąsiadujących ze sobą elementów:
 
 ```{r similarGroups}
 rawCSV[c(1:5, 1001:1005, 20001:20005), ]
@@ -161,7 +173,8 @@ summary(withoutMissing[-1])
 
 ```{r boxplots}
 boxplot(withoutMissing$length, horizontal=TRUE, main="Długość śledzia")
-boxplot(withoutMissing[,3:8], main="Dostępność planktonu")
+boxplot(withoutMissing[,3:8], main="Dostępność planktonu", 
+        names=c("Calanus finmarchicus", "Calanus finmarchicus", "Calanus helgolandicus", "Calanus helgolandicus", "widłonogi", "widłonogi"))
 boxplot(withoutMissing$fbar, horizontal=TRUE, main="Natężenie połowów w regionie")
 boxplot(withoutMissing$recr, horizontal=TRUE, main="Roczny narybek")
 boxplot(withoutMissing$cumf, horizontal=TRUE, main="Łączne roczne natężenie połowów w regionie")
@@ -173,7 +186,7 @@ boxplot(withoutMissing$nao, horizontal=TRUE, main="Oscylacja północnoatlantyck
 
 # Analiza korelacji
 
-Analizę związków pomiędzy atrybutami dokonano za pomocą wizualizacji macierzy korelacji. Macierz korelacji jest ...
+Analizę związków pomiędzy atrybutami dokonano za pomocą wizualizacji macierzy korelacji.
 
 ```{r corAnalysis}
 corMatrix <- cor(withoutMissing)
@@ -184,7 +197,7 @@ Na wykresie można zauważyć silną korelację ujemną między długością śl
 
 Oscylacja Północnoatlantycka to zjawisko meteorologiczne, które ma wpływ na klimat i jest związane ze zmianami cyrkulacji powietrza i wód, ze zmianami ciśnienia oraz temperatury. Można to zauważyć na macierzy - temperatura przy powierzchni jest silnie dodatnio skorelowana z NAO. Ujemna korelacja oznacza, że wyższa temperatura oraz dodatnia faza NAO wpływa na zmiejszenie się długości łowionych śledzi.
 
-Rozmiar śledzia jest także związany z intensywnościa połowów oraz dostępnością planktonu (chel1 - Calanus helgolandicus gat. 1 i lcop1 - widłonogów  gat. 1).
+Rozmiar śledzia jest także skorelowany z intensywnościa połowów oraz dostępnością planktonu (chel1 - Calanus helgolandicus gat. 1 i lcop1 - widłonogów  gat. 1).
 
 ```{r feature2, message = FALSE}
 ggplot(withoutMissing, aes(x=sst, y=length)) + geom_point() + geom_smooth() + theme_bw()
@@ -197,14 +210,70 @@ Dane w zbiorze są uporządkowane chronolicznie, dlatego jako atrybut X zostanie
 ```{r plotlyLength, message = FALSE}
 partition <- createDataPartition(y=withoutMissing$length, p=.05, list=FALSE)
 dfPartition <- withoutMissing[partition, ]
-p <- ggplot(dfPartition, aes(x=X, y=length, color=sst)) + geom_point() + geom_smooth() + theme_bw()
+p <- ggplot(dfPartition, aes(x=X, y=length)) + geom_point() + geom_smooth() + theme_bw()
 ggplotly(p)
 ```
 
 # Regresor przewidujący rozmiar śledzia
 
-Sekcję próbującą stworzyć regresor przewidujący rozmiar śledzia (w tej sekcji należy wykorzystać wiedzę z pozostałych punktów oraz wykonać dodatkowe czynności, które mogą poprawić trafność predykcji); dobór parametrów modelu oraz oszacowanie jego skuteczności powinny zostać wykonane za pomocą techniki podziału zbioru na dane uczące, walidujące i testowe; trafność regresji powinna zostać oszacowana na podstawie miar R2R2 i RMSERMSE.
+W kolejnym kroku dane zostaną podzielone na dane treningowe 80% i testowe 20% za pomocą stratyfikacji. Do utworzenia modelu wykorzystany zostanie algorytm Random Forest (RF). Podczas trenowania regresora wykorzystana zostanie metoda 'repeatedcv' podziału zbioru. Uczenie będzie miało zadanie wybrać optymalny parametr mtry dla algorytmu RF na podstawie miary RMSE.
+
+```{r regression, cache=TRUE, message = FALSE}
+#Podział zbioru na dane uczące 80%, testowe 20%
+set.seed(69)
+afterFeatureSelection <- withoutMissing %>% select(length, cfin1, cfin2, chel1, chel2, lcop1, lcop2, fbar, recr, cumf, totaln, sst, sal, nao)
+regPartition <- createDataPartition(y=afterFeatureSelection$length, p=.8, list=FALSE)
+train <- afterFeatureSelection[regPartition, ]
+test <- afterFeatureSelection[-regPartition, ]
+print(5)
+rfGrid <- expand.grid(mtry = 1:6)
+#Schemat uczenia rcv
+ctrl <- trainControl(
+    method = "repeatedcv",
+    number = 5,
+    repeats = 2)
+
+#uczenie
+fit <- train(length ~ .,
+             data = train,
+             method = 'rf',
+             trControl = ctrl,
+             metric = "RMSE",
+             tuneGrid=rfGrid,
+             importance = TRUE,
+             ntree=20)
+ggplot(fit) + ggtitle("Optymalizacja parametru mtry na podstawie miary RMSE") + theme_bw()
+
+```
+
+Jak widać na powyższym wykresie biblioteka caret dobrała optymalną wartość parametru mtry, dla algorytmu RandomForest, równą 3.
+
+Testowanie wygenerowanego modelu na danych testowych:
+
+```{r testRF}
+predictions <- predict(fit, newdata = test[-1])
+modelValues <- data.frame(obs = test$length, pred = predictions)
+```
+
+Model regresyjny został poddany testom na danych testowych. Osiągnięto wynik w postaci miar RMSE i Rsquared:
+`r kable(defaultSummary(modelValues))`
 
 # Analiza ważności atrybutów
 
-Analizę ważności atrybutów najlepszego znalezionego modelu regresji. Analiza ważności atrybutów powinna stanowić próbę odpowiedzi na pytanie: co sprawia, że rozmiar śledzi zaczął w pewnym momencie maleć.
+```{r variableImportance}
+importance <- varImp(fit, scale = FALSE)
+ggplot(importance)
+```
+
+Analiza ważności atrybutów wskazuje, że najważniejszym atrybutem podczas predykcji była temperatura przy powierzchni wody (sst). Wspomniany w jednym z poprzednich punktów atrybut dotyczący oscylacji północnoatlantyckiej nie jest tak ważny dla predykcji, bo jest silnie skorelowany z sst. Drugą cechą pod względem ważności mającą wpływ na predykcję wielkości śledzia okazała się cecha totaln - liczba śledzi złowionych podczas połowu. Kolejnymi atrybutami pod względem wagi przy predykcji to gatunki planktonu (chel2, lcop1), a także roczny narybek.
+
+Poniżej przedstawione zostaną wykresy przedstawiające zmiany wartości w czasie dla wybranych atrybutów. Pomarańczową linią zaznaczony jest moment, od którego liczba śledzi zaczyna maleć.
+
+```{r plotsComparison, message=FALSE}
+ggplot(data= withoutMissing, aes(x=X,y=length)) + geom_point() + geom_vline(xintercept = 17500, color="orange", linetype = "longdash", size = 1) + geom_smooth() + ggtitle("Zmiana długości śledzia w czasie") + theme_bw()
+ggplot(data= withoutMissing, aes(x=X,y=sst)) + geom_point() + geom_vline(xintercept = 17500, color="orange", linetype = "longdash", size = 1) + geom_smooth() + ggtitle("Zmiana temperatury przy powierzchni w czasie") + theme_bw()
+ggplot(data= withoutMissing, aes(x=X,y=chel2)) + geom_point() + geom_vline(xintercept = 17500, color="orange", linetype = "longdash", size = 1) + geom_smooth() + ggtitle("Zmiana dostępności Calanus helgolandicus gat. 2 w czasie") + theme_bw()
+ggplot(data= withoutMissing, aes(x=X,y=recr)) + geom_point() + geom_vline(xintercept = 17500, color="orange", linetype = "longdash", size = 1) + geom_smooth() + ggtitle("Zmiana rocznego narybku w czasie") + theme_bw()
+```
+
+Na podstawie powyższych wykresów można zauważyć, że na zmniejszenie długości śledzia mogło mieć wiele równoległych czynników. Widać wyraźnie że jeszcze zanim zaczęto łowić mniejsze śledzie postępował spadek liczności małych ryb (narybku). W tym samym czasie, gdy ryby zaczęły maleć można zauważyć spadek dostępności planktonu - Calanus helgolandicus. Temperatura przy powierzchni wody zaczęła rosnąć dopiero później, jednak mogła mieć wpływ na późniejszy efekt zmniejszenia długości poławianych śledzi.
