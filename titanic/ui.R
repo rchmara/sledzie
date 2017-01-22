@@ -31,9 +31,9 @@ shinyUI(fluidPage(
              actionButton("submit", "Sprawdź czy przeżyjesz!")
            )),
     column(width = 6, class = "col-md-9",
-           h3(textOutput("fare")),
+           h4(textOutput("fare")),
            plotlyOutput("plot"),
-           h3(textOutput("msg"))
+           h4(textOutput("msg"), style="text-align: center")
           )
   )
 ))

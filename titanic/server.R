@@ -9,6 +9,8 @@ library(shiny)
 library(caret)
 library(dplyr)
 library(plotly)
+library(randomForest)
+library("e1071")
 
 # LOAD DATA
 data <- read.csv('titanic.csv')
@@ -33,7 +35,7 @@ clean$Title[clean$Title %in% rareTitle]  <- 'Elite'
 
 # FEATURE SELECTION
 fullSurvived <- clean %>% select(Survived, Pclass, Sex, Age, Title)
-fullSurvived$Survived <- as.factor(full$Survived)
+fullSurvived$Survived <- as.factor(fullSurvived$Survived)
 
 fullFare <- clean %>% select(Pclass, Sex, Age, Title, Fare)
 
@@ -52,7 +54,7 @@ ctrlSurvived <- trainControl(
   number = 2,
   repeats = 5)
 fitSurvived <- train(factor(Survived) ~ .,
-             data = train,
+             data = fullSurvived,
              method = "rf",
              trControl = ctrlSurvived,
              ntree = 10)
@@ -130,5 +132,3 @@ shinyServer(function(input, output) {
   })
 
 })
-
-
